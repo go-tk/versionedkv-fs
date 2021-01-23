@@ -13,12 +13,26 @@ import (
 	"github.com/rs/xid"
 )
 
-func Open(baseDirName string) (versionedkv.Storage, error) {
-	dirNames, err := createDirs(baseDirName)
+// Options represents options for file system storages.
+type Options struct {
+	BaseDirName string
+}
+
+func (o *Options) sanitize() {
+	if o.BaseDirName == "" {
+		o.BaseDirName = "versionedkv"
+	}
+}
+
+// New creates a new file system storage with the given options.
+func Open(options Options) (versionedkv.Storage, error) {
+	var fss fsStorage
+	fss.options = options
+	fss.options.sanitize()
+	dirNames, err := createDirs(fss.options.BaseDirName)
 	if err != nil {
 		return nil, err
 	}
-	var fss fsStorage
 	fss.dirNames = dirNames
 	fss.eventBus.Init(internal.EventBusOptions{
 		EventDirName: dirNames.Versions,
@@ -31,6 +45,7 @@ func Open(baseDirName string) (versionedkv.Storage, error) {
 }
 
 type fsStorage struct {
+	options  Options
 	dirNames dirNames
 	eventBus internal.EventBus
 	closure  chan struct{}
