@@ -1,7 +1,9 @@
 package internal_test
 
 import (
+	"io/ioutil"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -27,7 +29,13 @@ func TestEventBus_Open(t *testing.T) {
 		ExpectedState  State
 	}
 	tc := testcase.New(func(t *testing.T) *Context {
-		return &Context{}
+		return &Context{
+			Init: Init{
+				Options: EventBusOptions{
+					EventDirName: makeEventDir(t),
+				},
+			},
+		}
 	}).Setup(func(t *testing.T, c *Context) {
 		c.EB.Init(c.Init.Options)
 	}).Run(func(t *testing.T, c *Context) {
@@ -83,7 +91,7 @@ func TestEventBus_AddWatcher(t *testing.T) {
 		return &Context{
 			Init: Init{
 				Options: EventBusOptions{
-					EventDirName: ".",
+					EventDirName: makeEventDir(t),
 				},
 			},
 		}
@@ -186,7 +194,7 @@ func TestEventBus_RemoveWatcher(t *testing.T) {
 		return &Context{
 			Init: Init{
 				Options: EventBusOptions{
-					EventDirName: ".",
+					EventDirName: makeEventDir(t),
 				},
 			},
 		}
@@ -327,7 +335,7 @@ func TestEventBus_handleEvents(t *testing.T) {
 		return &Context{
 			Init: Init{
 				Options: EventBusOptions{
-					EventDirName: ".",
+					EventDirName: makeEventDir(t),
 				},
 			},
 		}
@@ -346,22 +354,22 @@ func TestEventBus_handleEvents(t *testing.T) {
 			When("event file was created").
 			Then("fire event and remove watcher").
 			Run(func(t *testing.T, c *Context) {
-				w1, err := c.EB.AddWatcher("foo.tmp")
+				w1, err := c.EB.AddWatcher("foo")
 				if !assert.NoError(t, err) {
 					t.FailNow()
 				}
-				w2, err := c.EB.AddWatcher("foo.tmp")
+				w2, err := c.EB.AddWatcher("foo")
 				if !assert.NoError(t, err) {
 					t.FailNow()
 				}
 				time.AfterFunc(100*time.Millisecond, func() {
-					f, err := os.Create("foo.tmp")
+					f, err := os.Create(filepath.Join(c.Init.Options.EventDirName, "foo"))
 					if !assert.NoError(t, err) {
 						return
 					}
 					f.Close()
 				})
-				defer os.Remove("foo.tmp")
+				defer os.Remove("foo")
 				select {
 				case <-w1.Event():
 				case <-time.After(10 * time.Second):
@@ -379,11 +387,11 @@ func TestEventBus_handleEvents(t *testing.T) {
 			When("event file was updated").
 			Then("fire event").
 			Run(func(t *testing.T, c *Context) {
-				w0, err := c.EB.AddWatcher("bar.tmp")
+				w0, err := c.EB.AddWatcher("bar")
 				if !assert.NoError(t, err) {
 					t.FailNow()
 				}
-				f, err := os.Create("bar.tmp")
+				f, err := os.Create(filepath.Join(c.Init.Options.EventDirName, "bar"))
 				if !assert.NoError(t, err) {
 					t.FailNow()
 				}
@@ -392,11 +400,11 @@ func TestEventBus_handleEvents(t *testing.T) {
 				case <-time.After(10 * time.Second):
 					t.FailNow()
 				}
-				w1, err := c.EB.AddWatcher("bar.tmp")
+				w1, err := c.EB.AddWatcher("bar")
 				if !assert.NoError(t, err) {
 					t.FailNow()
 				}
-				w2, err := c.EB.AddWatcher("bar.tmp")
+				w2, err := c.EB.AddWatcher("bar")
 				if !assert.NoError(t, err) {
 					t.FailNow()
 				}
@@ -407,7 +415,7 @@ func TestEventBus_handleEvents(t *testing.T) {
 					}
 					f.Close()
 				})
-				defer os.Remove("bar.tmp")
+				defer os.Remove("bar")
 				select {
 				case <-w1.Event():
 				case <-time.After(10 * time.Second):
@@ -425,11 +433,11 @@ func TestEventBus_handleEvents(t *testing.T) {
 			When("event file was overwrote").
 			Then("fire event").
 			Run(func(t *testing.T, c *Context) {
-				w0, err := c.EB.AddWatcher("baz.tmp")
+				w0, err := c.EB.AddWatcher("baz")
 				if !assert.NoError(t, err) {
 					t.FailNow()
 				}
-				f, err := os.Create("baz.tmp")
+				f, err := os.Create(filepath.Join(c.Init.Options.EventDirName, "baz"))
 				if !assert.NoError(t, err) {
 					t.FailNow()
 				}
@@ -439,16 +447,16 @@ func TestEventBus_handleEvents(t *testing.T) {
 				case <-time.After(10 * time.Second):
 					t.FailNow()
 				}
-				w1, err := c.EB.AddWatcher("baz.tmp")
+				w1, err := c.EB.AddWatcher("baz")
 				if !assert.NoError(t, err) {
 					t.FailNow()
 				}
-				w2, err := c.EB.AddWatcher("baz.tmp")
+				w2, err := c.EB.AddWatcher("baz")
 				if !assert.NoError(t, err) {
 					t.FailNow()
 				}
 				time.AfterFunc(100*time.Millisecond, func() {
-					f, err := os.Create("baz.tmp.2")
+					f, err := os.Create(filepath.Join(c.Init.Options.EventDirName, "baz-2"))
 					if !assert.NoError(t, err) {
 						return
 					}
@@ -457,12 +465,15 @@ func TestEventBus_handleEvents(t *testing.T) {
 						return
 					}
 					f.Close()
-					err = os.Rename("baz.tmp.2", "baz.tmp")
+					err = os.Rename(
+						filepath.Join(c.Init.Options.EventDirName, "baz-2"),
+						filepath.Join(c.Init.Options.EventDirName, "baz"),
+					)
 					if !assert.NoError(t, err) {
 						return
 					}
 				})
-				defer os.Remove("baz.tmp")
+				defer os.Remove("baz")
 				select {
 				case <-w1.Event():
 				case <-time.After(10 * time.Second):
@@ -499,4 +510,12 @@ func TestEventBus_Close(t *testing.T) {
 	wg.Wait()
 	err = eb.Close()
 	assert.Equal(t, ErrEventBusClosed, err)
+}
+
+func makeEventDir(t *testing.T) string {
+	eventDirName, err := ioutil.TempDir("", "testeventbus.*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return eventDirName
 }
