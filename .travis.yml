@@ -1,0 +1,23 @@
+language: go
+
+go:
+  - 1.14
+
+os:
+  - linux
+  - osx
+  - windows
+
+cache:
+  directories:
+    - .build
+
+before_script:
+  - rmdir --ignore-fail-on-non-empty .build
+
+script:
+  - make all GO_TEST_FLAGS='-race -coverprofile=coverage.txt'
+  - git diff --exit-code
+
+after_success:
+  - bash <(curl -s https://codecov.io/bash)
