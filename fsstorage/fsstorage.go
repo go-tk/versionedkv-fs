@@ -24,7 +24,7 @@ func (o *Options) sanitize() {
 	}
 }
 
-// New creates a new file system storage with the given options.
+// Open creates a new file system storage with the given options.
 func Open(options Options) (versionedkv.Storage, error) {
 	var fss fsStorage
 	fss.options = options
