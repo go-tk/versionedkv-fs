@@ -52,36 +52,35 @@ type fsStorage struct {
 }
 
 func (fss *fsStorage) GetValue(_ context.Context, key string) (string, versionedkv.Version, error) {
-	value, version, err := fss.doGetValue(key, "")
+	value, version, _, err := fss.doGetValue(key, "")
 	return value, version2OpaqueVersion(version), err
 }
 
-func (fss *fsStorage) doGetValue(key string, oldVersion string) (string, string, error) {
+func (fss *fsStorage) doGetValue(key string, oldVersion string) (string, string, bool, error) {
 	if fss.eventBus.IsClosed() {
-		return "", "", versionedkv.ErrStorageClosed
+		return "", "", false, versionedkv.ErrStorageClosed
 	}
 	versionFile, newVersion, err := fss.openAndReadVersionFile(key, os.O_RDONLY)
 	if err != nil {
+		var ok bool
 		if os.IsNotExist(err) {
+			ok = oldVersion != ""
 			err = nil
 		}
-		return "", "", err
+		return "", "", ok, err
 	}
 	defer versionFile.Close()
-	if newVersion == "" {
-		return "", "", nil
-	}
-	if oldVersion != "" && newVersion == oldVersion {
-		return "", "", nil
+	if newVersion == oldVersion {
+		return "", "", false, nil
 	}
 	valueFileName := fss.valueFileName(key, newVersion)
 	rawValue, err := ioutil.ReadFile(valueFileName)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return "", "", err
+			return "", "", false, err
 		}
 	}
-	return string(rawValue), newVersion, nil
+	return string(rawValue), newVersion, true, nil
 }
 
 func (fss *fsStorage) WaitForValue(ctx context.Context, key string, oldOpaqueVersion versionedkv.Version) (string, versionedkv.Version, error) {
@@ -91,6 +90,7 @@ func (fss *fsStorage) WaitForValue(ctx context.Context, key string, oldOpaqueVer
 
 func (fss *fsStorage) doWaitForValue(ctx context.Context, key string, oldVersion string) (string, string, error) {
 	for {
+		var retry bool
 		value, newVersion, err := func() (string, string, error) {
 			watcher, err := fss.eventBus.AddWatcher(key)
 			if err != nil {
@@ -104,11 +104,12 @@ func (fss *fsStorage) doWaitForValue(ctx context.Context, key string, oldVersion
 					fss.eventBus.RemoveWatcher(key, watcher)
 				}
 			}()
-			value, newVersion, err := fss.doGetValue(key, oldVersion)
+			value, newVersion, ok, err := fss.doGetValue(key, oldVersion)
 			if err != nil {
 				return "", "", err
 			}
-			if newVersion == "" {
+			retry = !ok
+			if retry {
 				select {
 				case <-watcher.Event():
 					watcher = internal.Watcher{}
@@ -125,7 +126,7 @@ func (fss *fsStorage) doWaitForValue(ctx context.Context, key string, oldVersion
 		if err != nil {
 			return "", "", err
 		}
-		if newVersion == "" {
+		if retry {
 			continue
 		}
 		return value, newVersion, nil
@@ -271,7 +272,7 @@ func (fss *fsStorage) Inspect(_ context.Context) (versionedkv.StorageDetails, er
 	var valueDetails map[string]versionedkv.ValueDetails
 	for _, fileInfo := range fileInfos {
 		key := fileInfo.Name()
-		value, version, err := fss.doGetValue(key, "")
+		value, version, _, err := fss.doGetValue(key, "")
 		if err != nil {
 			return versionedkv.StorageDetails{}, err
 		}
