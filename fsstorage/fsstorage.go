@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/go-tk/versionedkv"
 	"github.com/go-tk/versionedkv-fs/fsstorage/internal"
@@ -244,6 +245,11 @@ func (fss *fsStorage) doDeleteValue(key string, version string) (bool, error) {
 	}
 	if version != "" && currentVersion != version {
 		return false, nil
+	}
+	if runtime.GOOS == "darwin" {
+		if _, err := versionFile.Write([]byte{0}); err != nil {
+			return false, err
+		}
 	}
 	if err := versionFile.Truncate(0); err != nil {
 		return false, err
