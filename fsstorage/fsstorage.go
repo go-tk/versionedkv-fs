@@ -61,17 +61,18 @@ func (fss *fsStorage) doGetValue(key string, oldVersion string) (string, string,
 		return "", "", false, versionedkv.ErrStorageClosed
 	}
 	versionFile, newVersion, err := fss.openAndReadVersionFile(key, os.O_RDONLY)
-	if err != nil {
-		var ok bool
-		if os.IsNotExist(err) {
-			ok = oldVersion != ""
-			err = nil
+	if err == nil {
+		defer versionFile.Close()
+	} else {
+		if !os.IsNotExist(err) {
+			return "", "", false, nil
 		}
-		return "", "", ok, err
 	}
-	defer versionFile.Close()
 	if newVersion == oldVersion {
 		return "", "", false, nil
+	}
+	if newVersion == "" {
+		return "", "", true, nil
 	}
 	valueFileName := fss.valueFileName(key, newVersion)
 	rawValue, err := ioutil.ReadFile(valueFileName)
@@ -167,13 +168,13 @@ func (fss *fsStorage) doUpdateValue(key string, value string, oldVersion string)
 		return "", versionedkv.ErrStorageClosed
 	}
 	versionFile, currentVersion, err := fss.openAndReadVersionFile(key, os.O_RDWR)
-	if err != nil {
-		if os.IsNotExist(err) {
-			err = nil
+	if err == nil {
+		defer versionFile.Close()
+	} else {
+		if !os.IsNotExist(err) {
+			return "", err
 		}
-		return "", err
 	}
-	defer versionFile.Close()
 	if currentVersion == "" {
 		return "", nil
 	}
@@ -231,13 +232,13 @@ func (fss *fsStorage) doDeleteValue(key string, version string) (bool, error) {
 		return false, versionedkv.ErrStorageClosed
 	}
 	versionFile, currentVersion, err := fss.openAndReadVersionFile(key, os.O_RDWR)
-	if err != nil {
-		if os.IsNotExist(err) {
-			err = nil
+	if err == nil {
+		defer versionFile.Close()
+	} else {
+		if !os.IsNotExist(err) {
+			return false, err
 		}
-		return false, err
 	}
-	defer versionFile.Close()
 	if currentVersion == "" {
 		return false, nil
 	}
