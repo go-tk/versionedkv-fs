@@ -1,3 +1,4 @@
+// Package fsstorage provides the implementation of versionedkv based on the file system.
 package fsstorage
 
 import (
