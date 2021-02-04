@@ -13,7 +13,7 @@ cache:
     - .build
 
 before_script:
-  - if [ "$TRAVIS_OS_NAME" = linux ]; then chown --recursive travis:travis .build && rmdir --ignore-fail-on-non-empty .build; fi
+  - if [ "$TRAVIS_OS_NAME" = linux ]; then rmdir --ignore-fail-on-non-empty .build; fi
 
 script:
   - >-
